@@ -51,18 +51,30 @@ def daily_quota(limit):
             tg = update.effective_user
             user = ensure_user(session, tg)
             today = datetime.date.today()
+
+            # Reset quota if new day
             if user.last_request_date != today:
                 user.last_request_date = today
                 user.requests_today = 0
+
+            # ✅ Admins bypass quota
+            if is_admin(tg.id):
+                session.commit()
+                return await func(update, context, *a, **kw)
+
+            # ✅ Premium users bypass quota
             if user.is_premium:
                 session.commit()
                 return await func(update, context, *a, **kw)
+
+            # Normal users → enforce quota
             if user.requests_today >= limit:
                 await update.message.reply_text(
                     f"Quota reached ({limit} requests/day). Buy premium with /buy or ask an admin to grant access."
                 )
                 session.commit()
                 return
+
             user.requests_today += 1
             session.commit()
             return await func(update, context, *a, **kw)
@@ -161,20 +173,22 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📈 {symbol.upper()} ≈ ${price:,}")
 
 # ask (OpenAI) — wrapped with daily_quota(2) during dev
+# ask (OpenAI) — wrapped with daily_quota(2) during dev
 @daily_quota(2)
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /ask <your question>")
         return
+
     question = " ".join(context.args)
-    # OpenAI call via requests (simple approach)
+
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
     payload = {
         "model": "gpt-3.5-turbo",
-        "messages": [{"role":"user", "content": question}],
+        "messages": [{"role": "user", "content": question}],
         "max_tokens": 600,
-        "temperature": 0.3
+        "temperature": 0.3,
     }
 
     def fetch():
@@ -182,16 +196,21 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         resp = await asyncio.to_thread(fetch)
+
+        if resp.status_code != 200:
+            await update.message.reply_text(f"OpenAI error {resp.status_code}: {resp.text}")
+            return
+
         j = resp.json()
         answer = j["choices"][0]["message"]["content"].strip()
+
     except Exception as e:
-        await update.message.reply_text("AI service error or timeout.")
+        await update.message.reply_text(f"AI error: {e}")
         return
 
     # split long replies if needed
     for chunk in (answer[i:i+3900] for i in range(0, len(answer), 3900)):
         await update.message.reply_text(chunk)
-
 # -------------------------
 # Manual payment flow (simple)
 # -------------------------
