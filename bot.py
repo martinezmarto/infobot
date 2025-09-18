@@ -22,8 +22,12 @@ ADMIN_IDS = [int(x) for x in (os.getenv("ADMIN_IDS","").split(",") if os.getenv(
 PAYMENT_PROVIDER_TOKEN = os.getenv("PAYMENT_PROVIDER_TOKEN", "")
 
 # DB
-from models import get_sessionmaker, User, Transaction
-SessionLocal = get_sessionmaker(DB_URL)
+# DB
+from models import get_sessionmaker, User, Transaction, Base
+SessionLocal, engine = get_sessionmaker(DB_URL)
+
+# ensure tables exist
+Base.metadata.create_all(engine)
 
 # helper: ensure user exists
 def ensure_user(session, tg_user):

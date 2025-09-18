@@ -28,7 +28,13 @@ class Transaction(Base):
     payload = Column(String)
     timestamp = Column(DateTime, default=func.now())
 
-def get_sessionmaker(db_url):
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)
+def get_sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+def get_sessionmaker(db_url: str):
+    if db_url.startswith("sqlite"):
+        engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    else:
+        engine = create_engine(db_url)  # ✅ no connect_args for Postgres
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine), engine
