@@ -173,7 +173,7 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📈 {symbol.upper()} ≈ ${price:,}")
 
 # ask (OpenAI) — wrapped with daily_quota(2) during dev
-# ask (OpenAI) — wrapped with daily_quota(2) during dev
+
 @daily_quota(2)
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -182,13 +182,20 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     question = " ".join(context.args)
 
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+    import json
+    import requests
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    url = "https://api.groq.ai/v1/generate"
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     payload = {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": question}],
-        "max_tokens": 600,
-        "temperature": 0.3,
+        "model": "groq-llm",  # free Groq model
+        "input": question,
+        "max_output_tokens": 600
     }
 
     def fetch():
@@ -196,14 +203,11 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         resp = await asyncio.to_thread(fetch)
-
         if resp.status_code != 200:
-            await update.message.reply_text(f"OpenAI error {resp.status_code}: {resp.text}")
+            await update.message.reply_text(f"Groq API error {resp.status_code}: {resp.text}")
             return
-
-        j = resp.json()
-        answer = j["choices"][0]["message"]["content"].strip()
-
+        data = resp.json()
+        answer = data.get("output", "[No answer returned]").strip()
     except Exception as e:
         await update.message.reply_text(f"AI error: {e}")
         return
