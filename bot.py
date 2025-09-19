@@ -173,46 +173,49 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📈 {symbol.upper()} ≈ ${price:,}")
 
 # ask (OpenAI) — wrapped with daily_quota(2) during dev
-
-import os
-import requests
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import CommandHandler, ContextTypes
+import os, requests
 
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
-HF_MODEL = "tiiuae/falcon-7b-instruct"  # you can change to another chat model
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+def ask_hf(question: str) -> str:
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {"inputs": question}
+
+    response = requests.post(
+        "https://api-inference.huggingface.co/models/google/gemma-2b",  # ✅ free hosted model
+        headers=headers,
+        json=payload,
+        timeout=60,
+    )
+
+    if response.status_code != 200:
+        return f"HF API error {response.status_code}: {response.text}"
+
+    data = response.json()
+    # Hugging Face responses are usually a list with "generated_text"
+    if isinstance(data, list) and "generated_text" in data[0]:
+        return data[0]["generated_text"]
+
+    return str(data)
+
 
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /ask <your question>")
+        await update.message.reply_text("❌ Please provide a question.\nExample: /ask What is AI?")
         return
 
     question = " ".join(context.args)
+    await update.message.reply_text("🤔 Thinking...")
 
-    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
-    payload = {"inputs": question}
-
-    try:
-        response = requests.post(
-            f"https://api-inference.huggingface.co/models/{HF_MODEL}",
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
-                answer = data[0]["generated_text"]
-            else:
-                answer = str(data)
-        else:
-            answer = f"HF API error {response.status_code}: {response.text}"
-
-    except Exception as e:
-        answer = f"HuggingFace API call failed: {e}"
-
+    answer = ask_hf(question)
     await update.message.reply_text(answer)
+
+
+def register_handlers(app):
+    app.add_handler(CommandHandler("ask", ask))
+
 # -------------------------
 # Manual payment flow (simple)
 # -------------------------
