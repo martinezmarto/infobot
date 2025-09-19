@@ -174,7 +174,14 @@ async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ask (OpenAI) — wrapped with daily_quota(2) during dev
 
-@daily_quota(2)
+import os
+import requests
+from telegram import Update
+from telegram.ext import ContextTypes
+
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+HF_MODEL = "tiiuae/falcon-7b-instruct"  # you can change to another chat model
+
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /ask <your question>")
@@ -182,39 +189,30 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     question = " ".join(context.args)
 
-    import json
-    import requests
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-    url = "https://api.groq.ai/v1/generate"
-
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "groq-llm",  # free Groq model
-        "input": question,
-        "max_output_tokens": 600
-    }
-
-    def fetch():
-        return requests.post(url, headers=headers, json=payload, timeout=30)
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
+    payload = {"inputs": question}
 
     try:
-        resp = await asyncio.to_thread(fetch)
-        if resp.status_code != 200:
-            await update.message.reply_text(f"Groq API error {resp.status_code}: {resp.text}")
-            return
-        data = resp.json()
-        answer = data.get("output", "[No answer returned]").strip()
-    except Exception as e:
-        await update.message.reply_text(f"AI error: {e}")
-        return
+        response = requests.post(
+            f"https://api-inference.huggingface.co/models/{HF_MODEL}",
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
 
-    # split long replies if needed
-    for chunk in (answer[i:i+3900] for i in range(0, len(answer), 3900)):
-        await update.message.reply_text(chunk)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0 and "generated_text" in data[0]:
+                answer = data[0]["generated_text"]
+            else:
+                answer = str(data)
+        else:
+            answer = f"HF API error {response.status_code}: {response.text}"
+
+    except Exception as e:
+        answer = f"HuggingFace API call failed: {e}"
+
+    await update.message.reply_text(answer)
 # -------------------------
 # Manual payment flow (simple)
 # -------------------------
